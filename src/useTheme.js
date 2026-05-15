@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 // ── Pink theme assets ────────────────────────────────────
 import pinkFrame from '../assets/pink/frame.png';
@@ -135,7 +136,7 @@ export default function useTheme() {
       } catch {
         // ignore
       }
-      window.cupid?.setTheme(next);
+      invoke('set_theme', { theme: next });
       return next;
     });
   }, []);

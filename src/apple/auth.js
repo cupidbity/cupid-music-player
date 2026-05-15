@@ -6,6 +6,8 @@
  * via MusicKit JS authorize() in the renderer.
  */
 
+import { invoke } from '@tauri-apps/api/core';
+
 const DEVELOPER_TOKEN_KEY = 'apple_developer_token';
 const USER_TOKEN_KEY = 'apple_user_token';
 
@@ -48,7 +50,7 @@ function loadMusicKitScript() {
 export async function initMusicKit() {
   if (musicKitInstance) return musicKitInstance;
 
-  const devToken = await window.cupid.getAppleMusicToken();
+  const devToken = await invoke('get_apple_music_token');
   if (!devToken) throw new Error('No Apple Music developer token — check your .env and .p8 key file');
 
   localStorage.setItem(DEVELOPER_TOKEN_KEY, devToken);

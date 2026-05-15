@@ -1,4 +1,7 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { listen } from '@tauri-apps/api/event';
 import './App.css';
 import useAudioPlayer from './useAudioPlayer';
 import useSpotifyPlayer from './useSpotifyPlayer';
@@ -23,7 +26,7 @@ function useResize(corner) {
       const dy = e.screenY - lastY;
       lastX = e.screenX;
       lastY = e.screenY;
-      window.cupid?.resize({ dx, dy, corner });
+      invoke('window_resize', { dx, dy, corner });
     };
 
     const onMouseUp = () => {
@@ -119,7 +122,7 @@ export default function App() {
       .finally(() => setLoadingPlaylists(false));
   }, []);
 
-  // ── Handle Spotify OAuth callback on mount ─────────────
+  // ── Handle Spotify OAuth callback on mount (dev: localhost redirect) ──────
   useEffect(() => {
     async function checkCallback() {
       const params = new URLSearchParams(window.location.search);
@@ -138,6 +141,26 @@ export default function App() {
       }
     }
     checkCallback();
+  }, []);
+
+  // ── Handle Spotify OAuth deep-link callback (production: cupid://) ────────
+  useEffect(() => {
+    const unlistenPromise = listen('spotify-callback', async (event) => {
+      try {
+        const url = new URL(event.payload);
+        const code = url.searchParams.get('code');
+        const error = url.searchParams.get('error');
+        if (error) { setSettingsError(`Spotify auth error: ${error}`); return; }
+        if (code) {
+          await handleCallback(code);
+          setSpotifyConnected(true);
+          setTimeout(() => loadSpotifyPlaylists(true), 500);
+        }
+      } catch (err) {
+        setSettingsError(err.message);
+      }
+    });
+    return () => { unlistenPromise.then((fn) => fn()); };
   }, []);
 
   // ── Load a playlist by ID (works for both services) ───
@@ -391,9 +414,9 @@ export default function App() {
       <div className="btn btn-next" onClick={next} />
 
       {/* Window control click targets */}
-      <div className="btn btn-minimize" onClick={() => window.cupid?.minimize()} />
-      <div className="btn btn-window" onClick={() => window.cupid?.maximize()} />
-      <div className="btn btn-exit" onClick={() => window.cupid?.close()} />
+      <div className="btn btn-minimize" onClick={() => getCurrentWindow().minimize()} />
+      <div className="btn btn-window" onClick={() => invoke('window_maximize')} />
+      <div className="btn btn-exit" onClick={() => getCurrentWindow().close()} />
 
       {/* Settings button */}
       <div className="btn btn-settings" onClick={() => setShowSettings((v) => !v)} />

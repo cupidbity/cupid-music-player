@@ -1,6 +1,10 @@
 	use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
+use tauri::Manager;
+use tauri::Emitter;
+use tauri_plugin_deep_link::DeepLinkExt;
+use image::GenericImageView;
 
 // Aspect ratio (415 × 675 px window)
 const ASPECT: f64 = 415.0 / 675.0;
@@ -332,10 +336,13 @@ fn set_theme(
     let icon_data = std::fs::read(&icon_path)
         .map_err(|e| format!("Could not read theme icon at {:?}: {e}", icon_path))?;
 
-    let image = tauri::image::Image::from_bytes(&icon_data)
+    let img = image::load_from_memory(&icon_data)
         .map_err(|e| format!("Could not decode theme icon: {e}"))?;
+    let (width, height) = img.dimensions();
+    let rgba = img.to_rgba8().into_raw();
+    let tauri_image = tauri::image::Image::new_owned(rgba, width, height);
 
-    window.set_icon(image).map_err(|e| e.to_string())?;
+    window.set_icon(tauri_image).map_err(|e| e.to_string())?;
 
     Ok(())
 }
@@ -366,7 +373,7 @@ pub fn run() {
         .setup(|app| {
             // Forward deep-link URLs (cupid://...) to the frontend as an event.
             let handle = app.handle().clone();
-            app.deep_link().on_open_urls(move |event| {
+            app.deep_link().on_open_url(move |event| {
                 if let Some(url) = event.urls().first() {
                     handle.emit("spotify-callback", url.to_string()).ok();
                 }

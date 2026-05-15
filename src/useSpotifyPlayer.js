@@ -8,6 +8,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 
 export default function useSpotifyPlayer(tracks, shuffle = false) {
   const audioRef = useRef(new Audio());
@@ -40,7 +41,7 @@ export default function useSpotifyPlayer(tracks, shuffle = false) {
 
     async function loadStream() {
       try {
-        const url = await window.cupid.getStreamUrl(t.title, t.artist);
+        const url = await invoke('get_stream_url', { title: t.title, artist: t.artist });
         if (cancelled) return;
         audio.src = url;
         audio.load();
@@ -66,7 +67,7 @@ export default function useSpotifyPlayer(tracks, shuffle = false) {
     const nextTrack = tracks[nextIdx];
     if (nextTrack) {
       // Fire and forget — just warms the cache in main process
-      window.cupid.getStreamUrl(nextTrack.title, nextTrack.artist).catch(() => {});
+      invoke('get_stream_url', { title: nextTrack.title, artist: nextTrack.artist }).catch(() => {});
     }
   }, [trackIndex, tracks]);
 

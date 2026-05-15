@@ -23,7 +23,7 @@ export default function useAudioPlayer(shuffle = false) {
 
   // Load track when index changes
   useEffect(() => {
-    audio.src = `./${track.file}`;
+    audio.src = `./audio/${track.file}`;
     audio.load();
     setProgress(0);
     setCurrentTime(0);

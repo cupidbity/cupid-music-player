@@ -5,8 +5,12 @@
  * Requires VITE_SPOTIFY_CLIENT_ID to be set in your .env file.
  */
 
+import { open } from '@tauri-apps/plugin-shell';
+
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
-const REDIRECT_URI = 'http://127.0.0.1:5173/callback';
+const REDIRECT_URI = import.meta.env.DEV
+  ? 'http://localhost:5173/callback'
+  : 'cupid://callback';
 const SCOPES = [
   'streaming',
   'user-read-email',
@@ -69,11 +73,7 @@ export async function login() {
 
   const authUrl = `https://accounts.spotify.com/authorize?${params}`;
 
-  if (window.cupid?.openExternal) {
-    window.cupid.openExternal(authUrl);
-  } else {
-    window.location.href = authUrl;
-  }
+  await open(authUrl);
 }
 
 /**
@@ -81,10 +81,15 @@ export async function login() {
  */
 let _callbackInFlight = false;
 
-export async function handleCallback() {
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get('code');
-  const error = params.get('error');
+export async function handleCallback(externalCode = null) {
+  let code = externalCode;
+  let error = null;
+
+  if (!code) {
+    const params = new URLSearchParams(window.location.search);
+    code = params.get('code');
+    error = params.get('error');
+  }
 
   if (error) {
     throw new Error(`Spotify auth error: ${error}`);

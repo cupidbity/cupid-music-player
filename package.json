@@ -3,68 +3,22 @@
   "version": "0.0.0",
   "private": true,
   "description": "A desktop media player",
-  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n vite,electron -c blue,magenta \"vite\" \"wait-on tcp:5173 && cross-env NODE_ENV=development electron .\"",
     "vite": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "electron": "electron .",
-    "package": "vite build && electron-builder"
+    "dev": "cargo tauri dev",
+    "build": "cargo tauri build",
+    "preview": "vite preview"
   },
   "dependencies": {
-    "dotenv": "^17.4.2",
-    "jsonwebtoken": "^9.0.3",
-    "music-metadata": "^11.12.3",
+    "@tauri-apps/api": "^2",
     "music-metadata-browser": "^2.5.11",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "yt-dlp-exec": "^1.0.2"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
-    "@vitejs/plugin-basic-ssl": "^2.3.0",
+    "@tauri-apps/cli": "^2",
     "@vitejs/plugin-react": "^4.3.4",
-    "concurrently": "^9.1.2",
-    "cross-env": "^7.0.3",
-    "electron": "^33.4.11",
-    "electron-builder": "^25.1.8",
-    "nodemon": "^3.1.14",
-    "vite": "^6.0.7",
-    "wait-on": "^8.0.1"
-  },
-  "build": {
-    "appId": "com.cupidbity.cupid-player",
-    "productName": "Cupid Player",
-    "files": [
-      "dist/**/*",
-      "electron/**/*",
-      "assets/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "audio",
-        "to": "audio",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
-    "directories": {
-      "output": "out"
-    },
-    "mac": {
-      "target": "dir",
-      "category": "public.app-category.music",
-      "icon": "assets/pink/icon.png"
-    },
-    "win": {
-      "target": "nsis",
-      "icon": "assets/pink/icon.png"
-    },
-    "linux": {
-      "target": "AppImage",
-      "icon": "assets/pink/icon.png"
-    }
+    "vite": "^6.0.7"
   }
 }

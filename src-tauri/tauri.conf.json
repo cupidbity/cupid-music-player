@@ -41,16 +41,25 @@
       "../assets": "assets"
     },
     "externalBin": ["binaries/yt-dlp"],
-    "deepLinkProtocols": ["cupid"],
+    "category": "Music",
     "macOS": {
-      "minimumSystemVersion": "10.13",
-      "category": "public.app-category.music"
+      "minimumSystemVersion": "10.13"
     },
     "windows": {
       "nsis": {}
     },
     "linux": {
       "appimage": {}
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "protocols": [
+        {
+          "schemes": ["cupid"],
+          "name": "Cupid"
+        }
+      ]
     }
   }
 }
