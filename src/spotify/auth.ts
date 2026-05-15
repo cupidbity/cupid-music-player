@@ -1,16 +1,10 @@
-/**
- * Spotify OAuth 2.0 PKCE Authorization Flow
- *
- * No backend needed — the entire flow runs in the browser.
- * Requires VITE_SPOTIFY_CLIENT_ID to be set in your .env file.
- */
-
 import { open } from '@tauri-apps/plugin-shell';
 
-const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID as string;
 const REDIRECT_URI = import.meta.env.DEV
   ? 'http://localhost:5173/callback'
   : 'cupid://callback';
+
 const SCOPES = [
   'streaming',
   'user-read-email',
@@ -26,37 +20,29 @@ const REFRESH_KEY = 'spotify_refresh_token';
 const EXPIRY_KEY = 'spotify_token_expiry';
 const CODE_VERIFIER_KEY = 'spotify_code_verifier';
 
-// ── Helpers ──────────────────────────────────────────────────
-
-function generateRandomString(length) {
+function generateRandomString(length: number): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   const values = crypto.getRandomValues(new Uint8Array(length));
   return Array.from(values, (v) => chars[v % chars.length]).join('');
 }
 
-async function sha256(plain) {
+async function sha256(plain: string): Promise<ArrayBuffer> {
   const encoder = new TextEncoder();
   return crypto.subtle.digest('SHA-256', encoder.encode(plain));
 }
 
-function base64UrlEncode(buffer) {
+function base64UrlEncode(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   const str = String.fromCharCode(...bytes);
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-async function generateCodeChallenge(verifier) {
+async function generateCodeChallenge(verifier: string): Promise<string> {
   const hashed = await sha256(verifier);
   return base64UrlEncode(hashed);
 }
 
-// ── Public API ────────────────────────────────────────────────
-
-/**
- * Initiate the Spotify login flow.
- * Redirects the browser to Spotify's authorize endpoint.
- */
-export async function login() {
+export async function login(): Promise<void> {
   const verifier = generateRandomString(64);
   const challenge = await generateCodeChallenge(verifier);
 
@@ -72,18 +58,14 @@ export async function login() {
   });
 
   const authUrl = `https://accounts.spotify.com/authorize?${params}`;
-
   await open(authUrl);
 }
 
-/**
- * Handle the OAuth callback — exchange the authorization code for tokens.
- */
 let _callbackInFlight = false;
 
-export async function handleCallback(externalCode = null) {
+export async function handleCallback(externalCode: string | null = null): Promise<string | null> {
   let code = externalCode;
-  let error = null;
+  let error: string | null = null;
 
   if (!code) {
     const params = new URLSearchParams(window.location.search);
@@ -91,12 +73,8 @@ export async function handleCallback(externalCode = null) {
     error = params.get('error');
   }
 
-  if (error) {
-    throw new Error(`Spotify auth error: ${error}`);
-  }
-
+  if (error) throw new Error(`Spotify auth error: ${error}`);
   if (!code) return null;
-
   if (_callbackInFlight) return null;
   _callbackInFlight = true;
 
@@ -125,11 +103,13 @@ export async function handleCallback(externalCode = null) {
       throw new Error(`Token exchange failed (${response.status}): ${text}`);
     }
 
-    const data = await response.json();
+    const data = await response.json() as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+    };
     storeTokens(data);
     localStorage.removeItem(CODE_VERIFIER_KEY);
-
-    // Clean the URL so the code isn't re-used
     window.history.replaceState({}, '', '/');
 
     return data.access_token;
@@ -138,37 +118,31 @@ export async function handleCallback(externalCode = null) {
   }
 }
 
-function storeTokens({ access_token, refresh_token, expires_in }) {
+function storeTokens({ access_token, refresh_token, expires_in }: {
+  access_token: string;
+  refresh_token?: string;
+  expires_in: number;
+}): void {
   localStorage.setItem(TOKEN_KEY, access_token);
   if (refresh_token) localStorage.setItem(REFRESH_KEY, refresh_token);
   localStorage.setItem(EXPIRY_KEY, String(Date.now() + expires_in * 1000));
 }
 
-/**
- * Get a valid access token, refreshing if necessary.
- */
-export async function getAccessToken() {
+export async function getAccessToken(): Promise<string | null> {
   const token = localStorage.getItem(TOKEN_KEY);
   const expiry = Number(localStorage.getItem(EXPIRY_KEY) || '0');
 
-  // Token still valid
-  if (token && Date.now() < expiry - 60_000) {
-    return token;
-  }
+  if (token && Date.now() < expiry - 60_000) return token;
 
-  // Try to refresh
   const refreshed = await refreshAccessToken();
   if (refreshed) return refreshed;
 
-  // No refresh token but we have a token — use it anyway (may be expired)
   return token || null;
 }
 
-async function refreshAccessToken() {
+async function refreshAccessToken(): Promise<string | null> {
   const refreshToken = localStorage.getItem(REFRESH_KEY);
-  if (!refreshToken) {
-    return null;
-  }
+  if (!refreshToken) return null;
 
   const body = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -187,16 +161,20 @@ async function refreshAccessToken() {
     return null;
   }
 
-  const data = await response.json();
+  const data = await response.json() as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in: number;
+  };
   storeTokens(data);
   return data.access_token;
 }
 
-export function isLoggedIn() {
+export function isLoggedIn(): boolean {
   return !!localStorage.getItem(TOKEN_KEY);
 }
 
-export function logout() {
+export function logout(): void {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(REFRESH_KEY);
   localStorage.removeItem(EXPIRY_KEY);

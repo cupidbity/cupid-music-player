@@ -1,16 +1,9 @@
-/**
- * Spotify Web API helpers
- *
- * Fetches playlist data and normalises track objects into a shape
- * compatible with the local playlist format:
- *   { title, artist, art, uri }
- */
-
-import { getAccessToken } from './auth.js';
+import { getAccessToken } from './auth.ts';
+import type { Track, Playlist } from '../types.ts';
 
 const API_BASE = 'https://api.spotify.com/v1';
 
-async function fetchWithRetry(url, options, retries = 3) {
+async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
   for (let i = 0; i <= retries; i++) {
     const res = await fetch(url, options);
     if (res.ok || (res.status < 500 && res.status !== 429)) return res;
@@ -19,35 +12,19 @@ async function fetchWithRetry(url, options, retries = 3) {
   return fetch(url, options);
 }
 
-/**
- * Parse a Spotify playlist URL or URI and return the playlist ID.
- *
- * Accepts:
- *   - https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M
- *   - https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M?si=...
- *   - spotify:playlist:37i9dQZF1DXcBWIGoYBM5M
- *
- * @param {string} input
- * @returns {string|null} playlist ID or null if not recognised
- */
-export function parsePlaylistUrl(input) {
+export function parsePlaylistUrl(input: string): string | null {
   if (!input) return null;
-
   const trimmed = input.trim();
 
-  // Spotify URI format
   const uriMatch = trimmed.match(/^spotify:playlist:([a-zA-Z0-9]+)$/);
   if (uriMatch) return uriMatch[1];
 
-  // Web URL format
   try {
     const url = new URL(trimmed);
     if (url.hostname === 'open.spotify.com') {
       const parts = url.pathname.split('/');
       const idx = parts.indexOf('playlist');
-      if (idx !== -1 && parts[idx + 1]) {
-        return parts[idx + 1];
-      }
+      if (idx !== -1 && parts[idx + 1]) return parts[idx + 1];
     }
   } catch {
     // not a valid URL
@@ -56,13 +33,7 @@ export function parsePlaylistUrl(input) {
   return null;
 }
 
-/**
- * Fetch all tracks from a Spotify playlist (handles pagination).
- *
- * @param {string} playlistId
- * @returns {Promise<Array<{ title: string, artist: string, art: string, uri: string }>>}
- */
-export async function fetchPlaylistTracks(playlistId) {
+export async function fetchPlaylistTracks(playlistId: string): Promise<Track[]> {
   const token = await getAccessToken();
   if (!token) throw new Error('Not authenticated with Spotify');
 
@@ -75,18 +46,18 @@ export async function fetchPlaylistTracks(playlistId) {
     throw new Error(`Spotify API error ${res.status}: ${text}`);
   }
 
-  const data = await res.json();
-  const tracks = [];
+  const data = await res.json() as {
+    tracks?: { items: SpotifyPlaylistItem[] };
+    items?: SpotifyPlaylistItem[];
+  };
 
-  // The full playlist response nests tracks under `items` or `tracks`
-  const container = data.tracks || data.items;
-  const items = container?.items || [];
+  const container = data.tracks ?? data;
+  const items = (container as { items?: SpotifyPlaylistItem[] }).items ?? [];
+  const tracks: Track[] = [];
 
   for (const entry of items) {
-    // Track data may be under `track` or `item` depending on API version
-    const t = entry.track || entry.item;
-    if (!t || !t.uri) continue;
-
+    const t = entry.track ?? entry.item;
+    if (!t?.uri) continue;
     tracks.push({
       title: t.name,
       artist: t.artists.map((a) => a.name).join(', '),
@@ -95,7 +66,6 @@ export async function fetchPlaylistTracks(playlistId) {
     });
   }
 
-  // Fill in missing album art via search (local files, etc.)
   const missing = tracks.filter((t) => !t.art);
   if (missing.length > 0) {
     await Promise.all(missing.map(async (t) => {
@@ -106,14 +76,16 @@ export async function fetchPlaylistTracks(playlistId) {
           { headers: { Authorization: `Bearer ${token}` } },
         );
         if (searchRes.ok) {
-          const searchData = await searchRes.json();
+          const searchData = await searchRes.json() as {
+            tracks?: { items?: Array<{ album?: { images?: Array<{ url: string }> } }> };
+          };
           const found = searchData.tracks?.items?.[0];
           if (found?.album?.images?.[0]?.url) {
             t.art = found.album.images[0].url;
           }
         }
       } catch {
-        // ignore — just won't have art
+        // ignore — track just won't have art
       }
     }));
   }
@@ -121,17 +93,12 @@ export async function fetchPlaylistTracks(playlistId) {
   return tracks;
 }
 
-/**
- * Fetch the current user's playlists.
- *
- * @returns {Promise<Array<{ id: string, name: string, image: string|null, trackCount: number }>>}
- */
-export async function fetchMyPlaylists() {
+export async function fetchMyPlaylists(): Promise<Playlist[]> {
   const token = await getAccessToken();
   if (!token) throw new Error('Not authenticated with Spotify');
 
-  const playlists = [];
-  let url = `${API_BASE}/me/playlists?limit=50`;
+  const playlists: Playlist[] = [];
+  let url: string | null = `${API_BASE}/me/playlists?limit=50`;
 
   while (url) {
     const res = await fetchWithRetry(url, {
@@ -143,7 +110,11 @@ export async function fetchMyPlaylists() {
       throw new Error(`Spotify API error ${res.status}: ${text}`);
     }
 
-    const data = await res.json();
+    const data = await res.json() as {
+      items: SpotifyPlaylistSummary[];
+      next: string | null;
+    };
+
     for (const p of data.items) {
       playlists.push({
         id: p.id,
@@ -158,13 +129,7 @@ export async function fetchMyPlaylists() {
   return playlists;
 }
 
-/**
- * Fetch basic playlist metadata (name, image).
- *
- * @param {string} playlistId
- * @returns {Promise<{ name: string, image: string|null }>}
- */
-export async function fetchPlaylistInfo(playlistId) {
+export async function fetchPlaylistInfo(playlistId: string): Promise<{ name: string; image: string | null }> {
   const token = await getAccessToken();
   if (!token) throw new Error('Not authenticated with Spotify');
 
@@ -178,9 +143,27 @@ export async function fetchPlaylistInfo(playlistId) {
     throw new Error(`Spotify API error ${res.status}: ${text}`);
   }
 
-  const data = await res.json();
-  return {
-    name: data.name,
-    image: data.images?.[0]?.url ?? null,
-  };
+  const data = await res.json() as { name: string; images?: Array<{ url: string }> };
+  return { name: data.name, image: data.images?.[0]?.url ?? null };
+}
+
+// ── Internal Spotify API shapes ──────────────────────────────────────────────
+
+interface SpotifyArtist { name: string }
+interface SpotifyImage { url: string }
+interface SpotifyTrack {
+  name: string;
+  uri: string;
+  artists: SpotifyArtist[];
+  album?: { images?: SpotifyImage[] };
+}
+interface SpotifyPlaylistItem {
+  track?: SpotifyTrack;
+  item?: SpotifyTrack;
+}
+interface SpotifyPlaylistSummary {
+  id: string;
+  name: string;
+  images?: SpotifyImage[];
+  tracks?: { total: number };
 }

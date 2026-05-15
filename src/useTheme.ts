@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import type { ThemeName } from './types.ts';
 
-// ── Pink theme assets ────────────────────────────────────
 import pinkFrame from '../assets/pink/frame.png';
 import pinkFrameNoBg from '../assets/pink/frame_no_background.png';
 import pinkPlant from '../assets/pink/plant.png';
@@ -18,7 +18,6 @@ import pinkFavicon from '../assets/pink/favicon.png';
 import pinkProgressBar from '../assets/pink/progress_bar.png';
 import pinkSettings from '../assets/pink/settings.png';
 
-// ── Shared record animations ────────────────────────────
 import recordA1 from '../assets/animations/record-pink/frame-1.png';
 import recordA2 from '../assets/animations/record-pink/frame-2.png';
 import recordA3 from '../assets/animations/record-pink/frame-3.png';
@@ -28,7 +27,6 @@ import recordB2 from '../assets/animations/record-blue/frame-2.png';
 import recordB3 from '../assets/animations/record-blue/frame-3.png';
 import recordB4 from '../assets/animations/record-blue/frame-4.png';
 
-// ── Pink needle animations ──────────────────────────────
 import pinkNeedlePlay1 from '../assets/animations/pink/needle-playing/frame-1.png';
 import pinkNeedlePlay2 from '../assets/animations/pink/needle-playing/frame-2.png';
 import pinkNeedlePlay3 from '../assets/animations/pink/needle-playing/frame-3.png';
@@ -36,7 +34,6 @@ import pinkNeedleChange1 from '../assets/animations/pink/needle-change/frame-1.p
 import pinkNeedleChange2 from '../assets/animations/pink/needle-change/frame-2.png';
 import pinkNeedleChange3 from '../assets/animations/pink/needle-change/frame-3.png';
 
-// ── Blue needle animations ──────────────────────────────
 import blueNeedlePlay1 from '../assets/animations/blue/needle-playing/frame-1.png';
 import blueNeedlePlay2 from '../assets/animations/blue/needle-playing/frame-2.png';
 import blueNeedlePlay3 from '../assets/animations/blue/needle-playing/frame-3.png';
@@ -44,12 +41,6 @@ import blueNeedleChange1 from '../assets/animations/blue/needle-change/frame-1.p
 import blueNeedleChange2 from '../assets/animations/blue/needle-change/frame-2.png';
 import blueNeedleChange3 from '../assets/animations/blue/needle-change/frame-3.png';
 
-const SHARED_RECORD_FRAMES = {
-  recordFramesA: [recordA1, recordA2, recordA3, recordA4],
-  recordFramesB: [recordB1, recordB2, recordB3, recordB4],
-};
-
-// ── Blue theme assets ────────────────────────────────────
 import blueFrame from '../assets/blue/frame.png';
 import blueFrameNoBg from '../assets/blue/frame_no_background.png';
 import bluePlant from '../assets/blue/plant.png';
@@ -66,43 +57,54 @@ import blueFavicon from '../assets/blue/favicon.png';
 import blueProgressBar from '../assets/blue/progress_bar.png';
 import blueSettings from '../assets/blue/settings.png';
 
-const THEME_ASSETS = {
+export interface ThemeAssets {
+  frame: string;
+  frameNoBg: string;
+  plant: string;
+  recordPlayer: string;
+  albumFrame: string;
+  backwardsButton: string;
+  pauseButton: string;
+  playButton: string;
+  forwardsButton: string;
+  exitButton: string;
+  minimizerButton: string;
+  windowButton: string;
+  favicon: string;
+  progressBar: string;
+  settings: string;
+  recordFramesA: string[];
+  recordFramesB: string[];
+  needlePlayFrames: string[];
+  needleChangeFrames: string[];
+}
+
+const SHARED_RECORD_FRAMES = {
+  recordFramesA: [recordA1, recordA2, recordA3, recordA4],
+  recordFramesB: [recordB1, recordB2, recordB3, recordB4],
+};
+
+const THEME_ASSETS: Record<ThemeName, ThemeAssets> = {
   pink: {
-    frame: pinkFrame,
-    frameNoBg: pinkFrameNoBg,
-    plant: pinkPlant,
-    recordPlayer: pinkRecordPlayer,
-    albumFrame: pinkAlbumFrame,
-    backwardsButton: pinkBackwardsButton,
-    pauseButton: pinkPauseButton,
-    playButton: pinkPlayButton,
-    forwardsButton: pinkForwardsButton,
-    exitButton: pinkExitButton,
-    minimizerButton: pinkMinimizerButton,
-    windowButton: pinkWindowButton,
-    favicon: pinkFavicon,
-    progressBar: pinkProgressBar,
-    settings: pinkSettings,
+    frame: pinkFrame, frameNoBg: pinkFrameNoBg, plant: pinkPlant,
+    recordPlayer: pinkRecordPlayer, albumFrame: pinkAlbumFrame,
+    backwardsButton: pinkBackwardsButton, pauseButton: pinkPauseButton,
+    playButton: pinkPlayButton, forwardsButton: pinkForwardsButton,
+    exitButton: pinkExitButton, minimizerButton: pinkMinimizerButton,
+    windowButton: pinkWindowButton, favicon: pinkFavicon,
+    progressBar: pinkProgressBar, settings: pinkSettings,
     ...SHARED_RECORD_FRAMES,
     needlePlayFrames: [pinkNeedlePlay1, pinkNeedlePlay2, pinkNeedlePlay3],
     needleChangeFrames: [pinkNeedleChange1, pinkNeedleChange2, pinkNeedleChange3],
   },
   blue: {
-    frame: blueFrame,
-    frameNoBg: blueFrameNoBg,
-    plant: bluePlant,
-    recordPlayer: blueRecordPlayer,
-    albumFrame: blueAlbumFrame,
-    backwardsButton: blueBackwardsButton,
-    pauseButton: bluePauseButton,
-    playButton: bluePlayButton,
-    forwardsButton: blueForwardsButton,
-    exitButton: blueExitButton,
-    minimizerButton: blueMinimizerButton,
-    windowButton: blueWindowButton,
-    favicon: blueFavicon,
-    progressBar: blueProgressBar,
-    settings: blueSettings,
+    frame: blueFrame, frameNoBg: blueFrameNoBg, plant: bluePlant,
+    recordPlayer: blueRecordPlayer, albumFrame: blueAlbumFrame,
+    backwardsButton: blueBackwardsButton, pauseButton: bluePauseButton,
+    playButton: bluePlayButton, forwardsButton: blueForwardsButton,
+    exitButton: blueExitButton, minimizerButton: blueMinimizerButton,
+    windowButton: blueWindowButton, favicon: blueFavicon,
+    progressBar: blueProgressBar, settings: blueSettings,
     ...SHARED_RECORD_FRAMES,
     needlePlayFrames: [blueNeedlePlay1, blueNeedlePlay2, blueNeedlePlay3],
     needleChangeFrames: [blueNeedleChange1, blueNeedleChange2, blueNeedleChange3],
@@ -111,31 +113,27 @@ const THEME_ASSETS = {
 
 const STORAGE_KEY = 'cupid-player-theme';
 
-function getStoredTheme() {
+function getStoredTheme(): ThemeName {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === 'pink' || stored === 'blue') return stored;
-  } catch {
-    // localStorage unavailable
-  }
+  } catch { /* localStorage unavailable */ }
   return 'pink';
 }
 
-/**
- * Theme hook — stores preference in localStorage and provides
- * the correct asset set for the active theme.
- */
-export default function useTheme() {
-  const [theme, setTheme] = useState(getStoredTheme);
+export interface UseThemeResult {
+  theme: ThemeName;
+  toggleTheme: () => void;
+  assets: ThemeAssets;
+}
+
+export default function useTheme(): UseThemeResult {
+  const [theme, setTheme] = useState<ThemeName>(getStoredTheme);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
-      const next = prev === 'pink' ? 'blue' : 'pink';
-      try {
-        localStorage.setItem(STORAGE_KEY, next);
-      } catch {
-        // ignore
-      }
+      const next: ThemeName = prev === 'pink' ? 'blue' : 'pink';
+      try { localStorage.setItem(STORAGE_KEY, next); } catch { /* ignore */ }
       invoke('set_theme', { theme: next });
       return next;
     });

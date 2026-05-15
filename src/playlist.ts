@@ -1,7 +1,6 @@
-// Playlist data matching the Apple Music playlist "for the lover girl (me)"
-// Order matches the original playlist
+import type { Track } from './types.ts';
 
-const playlist = [
+const playlist: (Track & { file: string })[] = [
   { file: 'Lovers Rock.mp3', title: 'Lovers Rock', artist: 'TV Girl', album: 'French Exit', art: 'https://is1-ssl.mzstatic.com/image/thumb/Music122/v4/3d/09/0c/3d090c87-f02b-3c3c-cedf-603cc900082f/888174780955_cover.jpg/600x600bb.jpg' },
   { file: 'Come Inside Of My Heart.mp3', title: 'Come Inside Of My Heart', artist: 'IV OF SPADES', album: 'CLAPCLAPCLAP!', art: 'https://is1-ssl.mzstatic.com/image/thumb/Music221/v4/a4/e0/8d/a4e08db1-0d81-e8c4-6fc5-877761b22063/190295484996.jpg/600x600bb.jpg' },
   { file: 'Pluto Projector.mp3', title: 'Pluto Projector', artist: 'Rex Orange County', album: 'Pony', art: 'https://is1-ssl.mzstatic.com/image/thumb/Music124/v4/e3/af/48/e3af4809-2a90-38c3-c485-44ae6471f75b/886447950241.jpg/600x600bb.jpg' },

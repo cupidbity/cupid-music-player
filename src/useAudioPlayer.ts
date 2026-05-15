@@ -1,14 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import playlist from './playlist';
+import playlist from './playlist.ts';
+import type { PlayerState } from './types.ts';
 
-/**
- * Local audio player hook (HTML5 Audio).
- *
- * When used directly, plays from the local playlist.
- * The App component chooses between this and useSpotifyPlayer
- * based on the active source.
- */
-export default function useAudioPlayer(shuffle = false) {
+export default function useAudioPlayer(shuffle = false): PlayerState {
   const audioRef = useRef(new Audio());
   const shuffleRef = useRef(shuffle);
   shuffleRef.current = shuffle;
@@ -21,7 +15,6 @@ export default function useAudioPlayer(shuffle = false) {
   const track = playlist[trackIndex];
   const audio = audioRef.current;
 
-  // Load track when index changes
   useEffect(() => {
     audio.src = `./audio/${track.file}`;
     audio.load();
@@ -29,29 +22,21 @@ export default function useAudioPlayer(shuffle = false) {
     setCurrentTime(0);
     setDuration(0);
 
-    if (isPlaying) {
-      audio.play().catch(() => {});
-    }
-  }, [trackIndex]);
+    if (isPlaying) audio.play().catch(() => {});
+  }, [trackIndex]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Time update listener
   useEffect(() => {
     const onTimeUpdate = () => {
       setCurrentTime(audio.currentTime);
-      if (audio.duration) {
-        setProgress(audio.currentTime / audio.duration);
-      }
+      if (audio.duration) setProgress(audio.currentTime / audio.duration);
     };
-
-    const onLoadedMetadata = () => {
-      setDuration(audio.duration);
-    };
-
+    const onLoadedMetadata = () => setDuration(audio.duration);
     const onEnded = () => {
       setTrackIndex((prev) => {
         if (shuffleRef.current) {
-          let next;
-          do { next = Math.floor(Math.random() * playlist.length); } while (next === prev && playlist.length > 1);
+          let next: number;
+          do { next = Math.floor(Math.random() * playlist.length); }
+          while (next === prev && playlist.length > 1);
           return next;
         }
         return (prev + 1) % playlist.length;
@@ -61,33 +46,22 @@ export default function useAudioPlayer(shuffle = false) {
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
     audio.addEventListener('ended', onEnded);
-
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
       audio.removeEventListener('ended', onEnded);
     };
-  }, []);
-
-  const play = useCallback(() => {
-    audio.play().catch(() => {});
-    setIsPlaying(true);
-  }, []);
-
-  const pause = useCallback(() => {
-    audio.pause();
-    setIsPlaying(false);
-  }, []);
+  }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const togglePlay = useCallback(() => {
-    if (isPlaying) pause();
-    else play();
-  }, [isPlaying, play, pause]);
+    if (isPlaying) { audio.pause(); setIsPlaying(false); }
+    else { audio.play().catch(() => {}); setIsPlaying(true); }
+  }, [isPlaying]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const next = useCallback(() => {
     setTrackIndex((prev) => {
       if (shuffleRef.current && playlist.length > 1) {
-        let n;
+        let n: number;
         do { n = Math.floor(Math.random() * playlist.length); } while (n === prev);
         return n;
       }
@@ -96,29 +70,13 @@ export default function useAudioPlayer(shuffle = false) {
   }, []);
 
   const prev = useCallback(() => {
-    if (audio.currentTime > 3) {
-      audio.currentTime = 0;
-    } else {
-      setTrackIndex((prev) => (prev - 1 + playlist.length) % playlist.length);
-    }
-  }, []);
+    if (audio.currentTime > 3) { audio.currentTime = 0; }
+    else { setTrackIndex((p) => (p - 1 + playlist.length) % playlist.length); }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const seek = useCallback((fraction) => {
-    if (audio.duration) {
-      audio.currentTime = Math.min(fraction, 1) * audio.duration;
-    }
-  }, []);
+  const seek = useCallback((fraction: number) => {
+    if (audio.duration) audio.currentTime = Math.min(fraction, 1) * audio.duration;
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return {
-    track,
-    trackIndex,
-    isPlaying,
-    progress,
-    duration,
-    currentTime,
-    togglePlay,
-    next,
-    prev,
-    seek,
-  };
+  return { track, trackIndex, isPlaying, progress, duration, currentTime, togglePlay, next, prev, seek };
 }
