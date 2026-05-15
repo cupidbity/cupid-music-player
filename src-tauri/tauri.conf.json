@@ -15,7 +15,7 @@
         "title": "Cupid Player",
         "width": 415,
         "height": 675,
-        "resizable": true,
+        "resizable": false,
         "decorations": false,
         "transparent": true,
         "shadow": false,
