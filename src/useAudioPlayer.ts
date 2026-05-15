@@ -31,6 +31,7 @@ export default function useAudioPlayer(shuffle = false): PlayerState {
       if (audio.duration) setProgress(audio.currentTime / audio.duration);
     };
     const onLoadedMetadata = () => setDuration(audio.duration);
+    const onError = () => setIsPlaying(false);
     const onEnded = () => {
       setTrackIndex((prev) => {
         if (shuffleRef.current) {
@@ -45,17 +46,25 @@ export default function useAudioPlayer(shuffle = false): PlayerState {
 
     audio.addEventListener('timeupdate', onTimeUpdate);
     audio.addEventListener('loadedmetadata', onLoadedMetadata);
+    audio.addEventListener('error', onError);
     audio.addEventListener('ended', onEnded);
     return () => {
       audio.removeEventListener('timeupdate', onTimeUpdate);
       audio.removeEventListener('loadedmetadata', onLoadedMetadata);
+      audio.removeEventListener('error', onError);
       audio.removeEventListener('ended', onEnded);
     };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const togglePlay = useCallback(() => {
-    if (isPlaying) { audio.pause(); setIsPlaying(false); }
-    else { audio.play().catch(() => {}); setIsPlaying(true); }
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+    } else {
+      audio.play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
+    }
   }, [isPlaying]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const next = useCallback(() => {

@@ -402,6 +402,12 @@ fn window_resize(
     let size = window.outer_size().map_err(|e| e.to_string())?;
     let pos = window.outer_position().map_err(|e| e.to_string())?;
 
+    // screenX/screenY from the webview are logical (CSS) pixels; outer_size/outer_position
+    // are physical pixels. Multiply by scale_factor to match units on HiDPI displays.
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let dx = (dx as f64 * scale).round() as i32;
+    let dy = (dy as f64 * scale).round() as i32;
+
     let is_right = corner.contains("right");
     let is_bottom = corner.contains("bottom");
 
