@@ -147,7 +147,7 @@ export async function fetchPlaylistInfo(playlistId: string): Promise<{ name: str
   return { name: data.name, image: data.images?.[0]?.url ?? null };
 }
 
-// ── Internal Spotify API shapes ──────────────────────────────────────────────
+//  Internal Spotify API shapes 
 
 interface SpotifyArtist { name: string }
 interface SpotifyImage { url: string }

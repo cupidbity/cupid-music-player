@@ -429,7 +429,7 @@
   border-bottom-right-radius: calc(5 / 306 * 100vw);
 }
 
-/* ── Spotify panel ───────────────────────────────────────── */
+/*  Spotify panel  */
 
 /* Small toggle button positioned near the window controls */
 .btn-spotify-toggle {
