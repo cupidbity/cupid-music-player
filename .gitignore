@@ -3,9 +3,11 @@
 .env
 node_modules/
 dist/
-dist-electron/
-out/
 .vite/
+
+# Tauri build artifacts
+src-tauri/target/
+src-tauri/gen/
 
 .DS_Store
 Thumbs.db
@@ -14,6 +16,7 @@ Thumbs.db
 .env.local
 
 audio/*.mp3
+public/audio/*.mp3
 
 *.log
 npm-debug.log*
