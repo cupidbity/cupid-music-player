@@ -8,7 +8,8 @@
     "vite": "vite",
     "dev": "cargo tauri dev",
     "build": "cargo tauri build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
@@ -19,7 +20,11 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/spotify-web-playback-sdk": "^0.1.19",
     "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^6.0.3",
     "vite": "^6.0.7"
   }
 }
