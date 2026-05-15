@@ -1,15 +1,18 @@
-	use std::collections::HashMap;
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::Manager;
 use tauri::Emitter;
+use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
 use image::GenericImageView;
 
-// Aspect ratio (415 × 675 px window)
-const ASPECT: f64 = 415.0 / 675.0;
+//  Constants 
 
-// Managed state
+const ASPECT: f64 = 415.0 / 675.0;
+const STREAM_CACHE_TTL: Duration = Duration::from_secs(25 * 60);
+
+//  Managed state 
 
 struct CacheEntry {
     url: String,
@@ -40,27 +43,234 @@ struct MaximizeState {
     previous_bounds: Mutex<Option<SavedBounds>>,
 }
 
-const CACHE_TTL: Duration = Duration::from_secs(25 * 60);
+// Resolved yt-dlp binary path, cached after first discovery/download.
+struct YtDlpState {
+    path: Mutex<Option<PathBuf>>,
+}
 
-//  yt-dlp sidecar path helper 
-fn yt_dlp_path(app: &tauri::AppHandle) -> std::path::PathBuf {
-    // Tauri renames sidecar binaries with the target triple suffix at build time.
-    // In dev, fall back to system yt-dlp on PATH.
+//  yt-dlp platform helpers 
+
+/// Asset filename in the GitHub release for the current platform.
+fn yt_dlp_asset_name() -> &'static str {
+    #[cfg(target_os = "windows")]
+    return "yt-dlp.exe";
+    #[cfg(target_os = "macos")]
+    return "yt-dlp_macos";
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    return "yt-dlp_linux";
+}
+
+/// Local binary filename (no triple suffix — we manage the location ourselves).
+fn yt_dlp_binary_name() -> &'static str {
+    #[cfg(target_os = "windows")]
+    return "yt-dlp.exe";
+    #[cfg(not(target_os = "windows"))]
+    return "yt-dlp";
+}
+
+/// Fetch the tag name of the latest yt-dlp GitHub release (e.g. "2025.04.30").
+async fn fetch_latest_yt_dlp_version() -> Result<String, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("cupid-player/1.0")
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    let resp = client
+        .get("https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest")
+        .send()
+        .await
+        .map_err(|e| format!("GitHub API request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("GitHub API returned status {}", resp.status()));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse GitHub response: {e}"))?;
+
+    json["tag_name"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "No tag_name in GitHub release response".to_string())
+}
+
+/// Download yt-dlp for the current platform into `dest`.
+/// Emits `yt-dlp-progress` events (0.0–1.0) to the frontend window if available.
+async fn download_yt_dlp(
+    version: &str,
+    dest: &PathBuf,
+    app: &tauri::AppHandle,
+) -> Result<(), String> {
+    use tokio::io::AsyncWriteExt;
+
+    let url = format!(
+        "https://github.com/yt-dlp/yt-dlp/releases/download/{}/{}",
+        version,
+        yt_dlp_asset_name()
+    );
+
+    let client = reqwest::Client::builder()
+        .user_agent("cupid-player/1.0")
+        .build()
+        .map_err(|e| format!("HTTP client error: {e}"))?;
+
+    let resp = client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| format!("Download request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("Download returned HTTP {}", resp.status()));
+    }
+
+    let total = resp.content_length();
+
+    // Write to a temp file first; rename atomically when done.
+    let tmp = dest.with_extension("tmp");
+    let mut file = tokio::fs::File::create(&tmp)
+        .await
+        .map_err(|e| format!("Cannot create temp file: {e}"))?;
+
+    let mut downloaded: u64 = 0;
+    let mut stream = resp.bytes_stream();
+
+    use futures_util::StreamExt;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("Download stream error: {e}"))?;
+        file.write_all(&chunk)
+            .await
+            .map_err(|e| format!("File write error: {e}"))?;
+        downloaded += chunk.len() as u64;
+        if let Some(t) = total {
+            let pct = downloaded as f64 / t as f64;
+            app.emit("yt-dlp-progress", pct).ok();
+        }
+    }
+
+    file.flush().await.map_err(|e| format!("File flush error: {e}"))?;
+    drop(file);
+
+    // Set executable permission on Unix before rename.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("chmod failed: {e}"))?;
+    }
+
+    std::fs::rename(&tmp, dest).map_err(|e| format!("Rename failed: {e}"))?;
+
+    Ok(())
+}
+
+/// Return the managed yt-dlp binary path.
+///
+/// Resolution order:
+///   1. Already-resolved path cached in `YtDlpState` (fast path).
+///   2. Auto-downloaded binary in `app_data_dir/yt-dlp/`.
+///   3. Sidecar bundled in `resource_dir/binaries/` (dev sidecar).
+///   4. System `yt-dlp` on PATH.
+///
+/// Steps 2–4 also trigger an update check in the background.
+async fn resolve_yt_dlp(
+    state: &tauri::State<'_, YtDlpState>,
+    app: &tauri::AppHandle,
+) -> PathBuf {
+    // Fast path: already resolved.
+    {
+        let lock = state.path.lock().unwrap();
+        if let Some(ref p) = *lock {
+            return p.clone();
+        }
+    }
+
+    // Compute the managed binary location.
+    let managed_path: Option<PathBuf> = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|d| d.join("yt-dlp").join(yt_dlp_binary_name()));
+
+    let resolved = if let Some(ref p) = managed_path {
+        if p.exists() {
+            p.clone()
+        } else {
+            // Sidecar fallback while the first download hasn't happened yet.
+            sidecar_or_system_yt_dlp(app)
+        }
+    } else {
+        sidecar_or_system_yt_dlp(app)
+    };
+
+    // Cache the path so subsequent calls are instant.
+    *state.path.lock().unwrap() = Some(resolved.clone());
+
+    // Kick off a background update check — doesn't block playback.
+    if let Some(dest) = managed_path {
+        let app2 = app.clone();
+        tauri::async_runtime::spawn(async move {
+            let st = app2.state::<YtDlpState>();
+            update_yt_dlp_if_needed(&st, &dest, &app2).await;
+        });
+    }
+
+    resolved
+}
+
+fn sidecar_or_system_yt_dlp(app: &tauri::AppHandle) -> PathBuf {
     if let Ok(res_dir) = app.path().resource_dir() {
-        // When declared in externalBin, Tauri places them here at runtime.
-        let candidate = res_dir.join("binaries").join(format!("yt-dlp{}", EXE_SUFFIX));
+        let candidate = res_dir
+            .join("binaries")
+            .join(yt_dlp_binary_name());
         if candidate.exists() {
             return candidate;
         }
     }
-    // Fall back to system yt-dlp (works in `cargo tauri dev`)
-    std::path::PathBuf::from("yt-dlp")
+    PathBuf::from("yt-dlp")
 }
 
-#[cfg(target_os = "windows")]
-const EXE_SUFFIX: &str = ".exe";
-#[cfg(not(target_os = "windows"))]
-const EXE_SUFFIX: &str = "";
+async fn update_yt_dlp_if_needed(
+    state: &tauri::State<'_, YtDlpState>,
+    dest: &PathBuf,
+    app: &tauri::AppHandle,
+) {
+    let version_file = dest.parent().unwrap().join("version.txt");
+    let current = std::fs::read_to_string(&version_file)
+        .unwrap_or_default();
+    let current = current.trim();
+
+    let latest = match fetch_latest_yt_dlp_version().await {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!("[yt-dlp updater] Could not fetch latest version: {e}");
+            return;
+        }
+    };
+
+    if dest.exists() && current == latest {
+        return; // Already up to date.
+    }
+
+    eprintln!("[yt-dlp updater] Downloading {latest}…");
+
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+
+    match download_yt_dlp(&latest, dest, app).await {
+        Ok(()) => {
+            std::fs::write(&version_file, &latest).ok();
+            // Update cached path to the newly downloaded binary.
+            *state.path.lock().unwrap() = Some(dest.clone());
+            eprintln!("[yt-dlp updater] Updated to {latest}");
+            app.emit("yt-dlp-updated", &latest).ok();
+        }
+        Err(e) => eprintln!("[yt-dlp updater] Download failed: {e}"),
+    }
+}
 
 //  Commands 
 
@@ -69,21 +279,22 @@ async fn get_stream_url(
     title: String,
     artist: String,
     cache: tauri::State<'_, StreamCache>,
+    yt_dlp_state: tauri::State<'_, YtDlpState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     let key = format!("{}::{}", title, artist);
 
-    // Check cache without holding the lock during the slow network call.
+    // Check cache first.
     {
         let entries = cache.entries.lock().unwrap();
         if let Some(e) = entries.get(&key) {
-            if e.inserted_at.elapsed() < CACHE_TTL {
+            if e.inserted_at.elapsed() < STREAM_CACHE_TTL {
                 return Ok(e.url.clone());
             }
         }
     }
 
-    let binary = yt_dlp_path(&app);
+    let binary = resolve_yt_dlp(&yt_dlp_state, &app).await;
     let query = format!("ytsearch1:\"{}\" {}", title, artist);
 
     let output = tokio::time::timeout(
@@ -91,8 +302,7 @@ async fn get_stream_url(
         tokio::process::Command::new(&binary)
             .args([
                 &query,
-                "-f",
-                "bestaudio[ext=m4a]/bestaudio",
+                "-f", "bestaudio[ext=m4a]/bestaudio",
                 "--no-playlist",
                 "--no-warnings",
                 "-g",
@@ -103,10 +313,7 @@ async fn get_stream_url(
     .map_err(|_| "yt-dlp timed out after 15 seconds".to_string())?
     .map_err(|e| format!("yt-dlp failed to launch: {e}"))?;
 
-    let url = String::from_utf8_lossy(&output.stdout)
-        .trim()
-        .to_string();
-
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
     if url.is_empty() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         return Err(format!("No stream URL found. stderr: {stderr}"));
@@ -114,10 +321,7 @@ async fn get_stream_url(
 
     cache.entries.lock().unwrap().insert(
         key,
-        CacheEntry {
-            url: url.clone(),
-            inserted_at: Instant::now(),
-        },
+        CacheEntry { url: url.clone(), inserted_at: Instant::now() },
     );
 
     Ok(url)
@@ -128,7 +332,6 @@ async fn get_apple_music_token(
     state: tauri::State<'_, AppleMusicState>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    // Return cached token if still valid.
     {
         let lock = state.token.lock().unwrap();
         if let Some(ref t) = *lock {
@@ -143,9 +346,8 @@ async fn get_apple_music_token(
     let key_id = std::env::var("APPLE_KEY_ID")
         .map_err(|_| "APPLE_KEY_ID environment variable is not set".to_string())?;
 
-    // Locate .p8 key file: check explicit env var first, then resource_dir.
     let p8_path = if let Ok(p) = std::env::var("APPLE_KEY_PATH") {
-        std::path::PathBuf::from(p)
+        PathBuf::from(p)
     } else {
         let resource_dir = app
             .path()
@@ -156,12 +358,9 @@ async fn get_apple_music_token(
             .filter_map(|e| e.ok())
             .map(|e| e.path())
             .find(|p| p.extension().map(|x| x == "p8").unwrap_or(false))
-            .ok_or_else(|| {
-                format!(
-                    "No .p8 key file found in {:?}. Place it there or set APPLE_KEY_PATH.",
-                    resource_dir
-                )
-            })?
+            .ok_or_else(|| format!(
+                "No .p8 key file found in {resource_dir:?}. Place it there or set APPLE_KEY_PATH."
+            ))?
     };
 
     let pem = std::fs::read(&p8_path)
@@ -170,23 +369,14 @@ async fn get_apple_music_token(
     use jsonwebtoken::{encode, Algorithm, EncodingKey, Header};
 
     #[derive(serde::Serialize)]
-    struct Claims {
-        iss: String,
-        iat: u64,
-        exp: u64,
-    }
+    struct Claims { iss: String, iat: u64, exp: u64 }
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
 
-    let claims = Claims {
-        iss: team_id,
-        iat: now,
-        exp: now + 180 * 24 * 3600,
-    };
-
+    let claims = Claims { iss: team_id, iat: now, exp: now + 180 * 24 * 3600 };
     let mut header = Header::new(Algorithm::ES256);
     header.kid = Some(key_id);
 
@@ -197,10 +387,7 @@ async fn get_apple_music_token(
         .map_err(|e| format!("JWT signing failed: {e}"))?;
 
     let expires_at = Instant::now() + Duration::from_secs(179 * 24 * 3600);
-    *state.token.lock().unwrap() = Some(CachedToken {
-        jwt: jwt.clone(),
-        expires_at,
-    });
+    *state.token.lock().unwrap() = Some(CachedToken { jwt: jwt.clone(), expires_at });
 
     Ok(jwt)
 }
@@ -220,32 +407,20 @@ fn window_resize(
 
     let effective_dx = if is_right { dx } else { -dx };
     let effective_dy = if is_bottom { dy } else { -dy };
-
-    let delta = if effective_dx.abs() > effective_dy.abs() {
-        effective_dx
-    } else {
-        effective_dy
-    };
+    let delta = if effective_dx.abs() > effective_dy.abs() { effective_dx } else { effective_dy };
 
     let new_width = ((size.width as i32 + delta).max(200)) as u32;
     let new_height = (new_width as f64 / ASPECT).round() as u32;
     let dw = new_width as i32 - size.width as i32;
     let dh = new_height as i32 - size.height as i32;
 
-    let new_x = if is_right { pos.x } else { pos.x - dw };
-    let new_y = if is_bottom { pos.y } else { pos.y - dh };
-
     window
-        .set_size(tauri::Size::Physical(tauri::PhysicalSize {
-            width: new_width,
-            height: new_height,
-        }))
+        .set_size(tauri::Size::Physical(tauri::PhysicalSize { width: new_width, height: new_height }))
         .map_err(|e| e.to_string())?;
-
     window
         .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-            x: new_x,
-            y: new_y,
+            x: if is_right { pos.x } else { pos.x - dw },
+            y: if is_bottom { pos.y } else { pos.y - dh },
         }))
         .map_err(|e| e.to_string())?;
 
@@ -260,58 +435,37 @@ fn window_maximize(
     let mut prev = state.previous_bounds.lock().unwrap();
 
     if let Some(saved) = prev.take() {
-        // Restore previous size and position.
         window
-            .set_size(tauri::Size::Physical(tauri::PhysicalSize {
-                width: saved.width,
-                height: saved.height,
-            }))
+            .set_size(tauri::Size::Physical(tauri::PhysicalSize { width: saved.width, height: saved.height }))
             .map_err(|e| e.to_string())?;
         window
-            .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                x: saved.x,
-                y: saved.y,
-            }))
+            .set_position(tauri::Position::Physical(tauri::PhysicalPosition { x: saved.x, y: saved.y }))
             .map_err(|e| e.to_string())?;
     } else {
-        // Save current bounds, then fit the screen while maintaining aspect ratio.
         let size = window.outer_size().map_err(|e| e.to_string())?;
         let pos = window.outer_position().map_err(|e| e.to_string())?;
-
-        *prev = Some(SavedBounds {
-            x: pos.x,
-            y: pos.y,
-            width: size.width,
-            height: size.height,
-        });
+        *prev = Some(SavedBounds { x: pos.x, y: pos.y, width: size.width, height: size.height });
 
         let monitor = window
             .primary_monitor()
             .map_err(|e| e.to_string())?
             .ok_or_else(|| "No primary monitor found".to_string())?;
-
         let work = monitor.work_area();
+
         let mut new_w = work.size.width;
         let mut new_h = (new_w as f64 / ASPECT).round() as u32;
-
         if new_h > work.size.height {
             new_h = work.size.height;
             new_w = (new_h as f64 * ASPECT).round() as u32;
         }
 
-        let new_x = work.position.x + ((work.size.width as i32 - new_w as i32) / 2);
-        let new_y = work.position.y + ((work.size.height as i32 - new_h as i32) / 2);
-
         window
-            .set_size(tauri::Size::Physical(tauri::PhysicalSize {
-                width: new_w,
-                height: new_h,
-            }))
+            .set_size(tauri::Size::Physical(tauri::PhysicalSize { width: new_w, height: new_h }))
             .map_err(|e| e.to_string())?;
         window
             .set_position(tauri::Position::Physical(tauri::PhysicalPosition {
-                x: new_x,
-                y: new_y,
+                x: work.position.x + ((work.size.width as i32 - new_w as i32) / 2),
+                y: work.position.y + ((work.size.height as i32 - new_h as i32) / 2),
             }))
             .map_err(|e| e.to_string())?;
     }
@@ -334,7 +488,7 @@ fn set_theme(
         .join("favicon.png");
 
     let icon_data = std::fs::read(&icon_path)
-        .map_err(|e| format!("Could not read theme icon at {:?}: {e}", icon_path))?;
+        .map_err(|e| format!("Could not read theme icon at {icon_path:?}: {e}"))?;
 
     let img = image::load_from_memory(&icon_data)
         .map_err(|e| format!("Could not decode theme icon: {e}"))?;
@@ -354,15 +508,10 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_deep_link::init())
-        .manage(StreamCache {
-            entries: Mutex::new(HashMap::new()),
-        })
-        .manage(AppleMusicState {
-            token: Mutex::new(None),
-        })
-        .manage(MaximizeState {
-            previous_bounds: Mutex::new(None),
-        })
+        .manage(StreamCache { entries: Mutex::new(HashMap::new()) })
+        .manage(AppleMusicState { token: Mutex::new(None) })
+        .manage(MaximizeState { previous_bounds: Mutex::new(None) })
+        .manage(YtDlpState { path: Mutex::new(None) })
         .invoke_handler(tauri::generate_handler![
             get_stream_url,
             get_apple_music_token,
@@ -371,13 +520,36 @@ pub fn run() {
             set_theme,
         ])
         .setup(|app| {
-            // Forward deep-link URLs (cupid://...) to the frontend as an event.
+            // Forward deep-link URLs (cupid://...) to the frontend as a Tauri event.
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 if let Some(url) = event.urls().first() {
                     handle.emit("spotify-callback", url.to_string()).ok();
                 }
             });
+
+            // Kick off yt-dlp download/update check at startup (background task).
+            let handle2 = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let yt_dlp_state = handle2.state::<YtDlpState>();
+                let managed_path = handle2
+                    .path()
+                    .app_data_dir()
+                    .ok()
+                    .map(|d| d.join("yt-dlp").join(yt_dlp_binary_name()));
+
+                if let Some(dest) = managed_path {
+                    if let Some(parent) = dest.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    update_yt_dlp_if_needed(&yt_dlp_state, &dest, &handle2).await;
+                    // Cache the resolved path after startup download completes.
+                    if dest.exists() {
+                        *yt_dlp_state.path.lock().unwrap() = Some(dest);
+                    }
+                }
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())
