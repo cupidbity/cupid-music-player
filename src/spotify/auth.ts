@@ -2,7 +2,7 @@ import { open } from '@tauri-apps/plugin-shell';
 
 const CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID as string;
 const REDIRECT_URI = import.meta.env.DEV
-  ? 'http://localhost:5173/callback'
+  ? 'http://127.0.0.1:5173/callback'
   : 'cupid://callback';
 
 const SCOPES = [

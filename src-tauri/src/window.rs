@@ -2,7 +2,7 @@ use image::GenericImageView;
 use std::sync::Mutex;
 use tauri::Manager;
 
-const ASPECT: f64 = 415.0 / 675.0;
+const ASPECT: f64 = 306.0 / 497.0;
 
 //  State 
 

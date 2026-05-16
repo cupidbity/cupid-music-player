@@ -318,7 +318,7 @@ export default function App() {
         <span className="time-remaining">{formatTime(duration - currentTime)}</span>
       </div>
 
-      <div className="drag-region" />
+      <div className="drag-region" data-tauri-drag-region />
 
       <div className="resize-handle top-left" onMouseDown={resizeTL} />
       <div className="resize-handle top-right" onMouseDown={resizeTR} />
