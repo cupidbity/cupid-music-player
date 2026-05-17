@@ -68,6 +68,7 @@ export default function useAudioPlayer(shuffle = false): PlayerState {
   }, [isPlaying]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const next = useCallback(() => {
+    setIsPlaying(true);
     setTrackIndex((prev) => {
       if (shuffleRef.current && playlist.length > 1) {
         let n: number;
@@ -79,8 +80,14 @@ export default function useAudioPlayer(shuffle = false): PlayerState {
   }, []);
 
   const prev = useCallback(() => {
-    if (audio.currentTime > 3) { audio.currentTime = 0; }
-    else { setTrackIndex((p) => (p - 1 + playlist.length) % playlist.length); }
+    if (audio.currentTime > 3) {
+      audio.currentTime = 0;
+      audio.play().catch(() => {});
+      setIsPlaying(true);
+    } else {
+      setIsPlaying(true);
+      setTrackIndex((p) => (p - 1 + playlist.length) % playlist.length);
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const seek = useCallback((fraction: number) => {
