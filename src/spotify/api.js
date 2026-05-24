@@ -78,21 +78,46 @@ export async function fetchPlaylistTracks(playlistId) {
   const data = await res.json();
   const tracks = [];
 
-  // The full playlist response nests tracks under `items` or `tracks`
+  // Helper function to process an array of track items
+  function processItems(items) {
+    for (const entry of items) {
+      const t = entry.track || entry.item;
+      if (!t || !t.uri) continue;
+
+      tracks.push({
+        title: t.name,
+        artist: t.artists.map((a) => a.name).join(', '),
+        art: t.album?.images?.[0]?.url ?? null,
+        uri: t.uri,
+      });
+    }
+  }
+
+  // Handle the first batch of tracks from the main playlist response
   const container = data.tracks || data.items;
-  const items = container?.items || [];
+  let items = container?.items || [];
+  processItems(items);
 
-  for (const entry of items) {
-    // Track data may be under `track` or `item` depending on API version
-    const t = entry.track || entry.item;
-    if (!t || !t.uri) continue;
+  // PAGINATION LOOP: If there are more tracks, fetch them sequentially
+  let nextUrl = container?.next;
+  while (nextUrl) {
+    try {
+      const nextRes = await fetchWithRetry(nextUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-    tracks.push({
-      title: t.name,
-      artist: t.artists.map((a) => a.name).join(', '),
-      art: t.album?.images?.[0]?.url ?? null,
-      uri: t.uri,
-    });
+      if (!nextRes.ok) break; // Stop loop if a page fails to load
+
+      const nextData = await nextRes.json();
+      const nextItems = nextData.items || [];
+      processItems(nextItems);
+
+      // Check if there's yet another page
+      nextUrl = nextData.next;
+    } catch (err) {
+      console.error("Error fetching next page of tracks:", err);
+      break; 
+    }
   }
 
   // Fill in missing album art via search (local files, etc.)
@@ -120,7 +145,6 @@ export async function fetchPlaylistTracks(playlistId) {
 
   return tracks;
 }
-
 /**
  * Fetch the current user's playlists.
  *
