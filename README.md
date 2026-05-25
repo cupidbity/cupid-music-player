@@ -159,6 +159,14 @@ cp -r "out/mac-arm64/Cupid Player.app" /Applications/
 
 > Note: The macOS build is unsigned. On first launch you may need to right-click > Open, or go to System Settings > Privacy & Security to allow it.
 
+## Screenshots
+![Alt text](https://kierancr.com/images/cupidplayer/cupid1.png "Main Player View")
+![Alt text](https://kierancr.com/images/cupidplayer/cupid2.png "Browse Tracks")
+![Alt text](https://kierancr.com/images/cupidplayer/cupid3.png "Alternate Blue Theme")
+![Alt text](https://kierancr.com/images/cupidplayer/cupid4.png "Night Mode & Settings")
+![Alt text](https://kierancr.com/images/cupidplayer/cupid5.png "Choose a Playlist")
+![Alt text](https://kierancr.com/images/cupidplayer/cupid6.png "Credits & Links")
+
 ## Tech Stack
 
 - **Electron** — desktop app shell (frameless window, IPC, system tray)
