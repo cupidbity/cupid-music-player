@@ -21,6 +21,10 @@ import {
   fetchMyPlaylists as fetchYouTubePlaylists,
   fetchPlaylistTracks as fetchYouTubeTracks,
 } from './youtube/api.js';
+import {
+  parsePlaylistUrl as parseDeezerPlaylistUrl,
+  fetchPlaylistByUrl as fetchDeezerPlaylistByUrl,
+} from './deezer/api.js';
 
 import progressBarStars from '../assets/progress_bar_stars.png';
 import star from '../assets/star.png';
@@ -195,6 +199,7 @@ export default function App() {
   const [youtubeConnected, setYoutubeConnected] = useState(isYouTubeLoggedIn());
   const [youtubeLoggingIn, setYoutubeLoggingIn] = useState(false);
   const [youtubeUrlInput, setYoutubeUrlInput] = useState('');
+  const [deezerUrlInput, setDeezerUrlInput] = useState('');
   const [streamTracks, setStreamTracks] = useState([]);
   const [spotifyPlaylists, setSpotifyPlaylists] = useState([]);
   const [applePlaylists, setApplePlaylists] = useState([]);
@@ -205,12 +210,12 @@ export default function App() {
   const [musicService, setMusicService] = useState(() => {
     try {
       const stored = localStorage.getItem('cupid-player-music-service');
-      if (stored === 'spotify' || stored === 'apple' || stored === 'youtube' || stored === 'local') return stored;
+      if (stored === 'spotify' || stored === 'apple' || stored === 'youtube' || stored === 'deezer' || stored === 'local') return stored;
     } catch {
       // ignore
     }
     return 'local';
-  }); // 'spotify' | 'apple' | 'youtube' | 'local'
+  }); // 'spotify' | 'apple' | 'youtube' | 'deezer' | 'local'
   const [playMode, setPlayMode] = useState('normal'); // 'normal' | 'shuffle' | 'repeat'
   const [volumeHovered, setVolumeHovered] = useState(false);
   const [volumeDragging, setVolumeDragging] = useState(false);
@@ -302,6 +307,31 @@ export default function App() {
       setStreamTracks(tracks);
       setSource('streaming');
       setYoutubeUrlInput('');
+    } catch (err) {
+      setSettingsError(err.message);
+    } finally {
+      setLoadingPlaylist(false);
+    }
+  }, []);
+
+  // ── Load a public playlist from a Deezer URL (no sign-in) ─
+  const loadDeezerPlaylistFromUrl = useCallback(async (rawInput) => {
+    setSettingsError(null);
+    const parsed = parseDeezerPlaylistUrl(rawInput);
+    if (!parsed) {
+      setSettingsError('Not a recognised Deezer playlist URL');
+      return;
+    }
+    setLoadingPlaylist(true);
+    try {
+      const tracks = await fetchDeezerPlaylistByUrl(rawInput);
+      if (tracks.length === 0) {
+        setSettingsError('Playlist is empty or private');
+        return;
+      }
+      setStreamTracks(tracks);
+      setSource('streaming');
+      setDeezerUrlInput('');
     } catch (err) {
       setSettingsError(err.message);
     } finally {
@@ -719,6 +749,7 @@ export default function App() {
                 { value: 'spotify', label: 'spotify' },
                 { value: 'apple', label: 'apple' },
                 { value: 'youtube', label: 'youtube' },
+                { value: 'deezer', label: 'deezer' },
               ]}
               onChange={(next) => {
                 setMusicService(next);
@@ -885,6 +916,32 @@ export default function App() {
                   </button>
                 </>
               )
+            )}
+
+            {musicService === 'deezer' && (
+              <>
+                <input
+                  className="settings-input"
+                  type="text"
+                  placeholder="paste a public deezer playlist link"
+                  value={deezerUrlInput}
+                  onChange={(e) => setDeezerUrlInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && deezerUrlInput.trim()) {
+                      loadDeezerPlaylistFromUrl(deezerUrlInput.trim());
+                    }
+                  }}
+                  disabled={loadingPlaylist}
+                />
+                <button
+                  className={`settings-theme-btn ${loadingPlaylist || !deezerUrlInput.trim() ? 'disabled' : ''}`}
+                  onClick={() => loadDeezerPlaylistFromUrl(deezerUrlInput.trim())}
+                  disabled={loadingPlaylist || !deezerUrlInput.trim()}
+                >
+                  {loadingPlaylist ? 'loading...' : 'load playlist'}
+                </button>
+                <div className="settings-label">public playlists · no login required</div>
+              </>
             )}
 
             {settingsError && <div className="settings-error">{settingsError}</div>}

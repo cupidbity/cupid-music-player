@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('cupid', {
   getLocalPlaylist: () => ipcRenderer.invoke('get-local-playlist'),
   getLocalAudioPath: (filename) => ipcRenderer.invoke('get-local-audio-path', filename),
   openMusicFolder: () => ipcRenderer.invoke('open-music-folder'),
+  deezerFetchPlaylist: (playlistReference) => ipcRenderer.invoke('deezer-fetch-playlist', playlistReference),
   youtubeFetchPlaylist: (url) => ipcRenderer.invoke('youtube-fetch-playlist', url),
   youtubeOauthStart: (opts) => ipcRenderer.invoke('youtube-oauth-start', opts),
   youtubeOauthCancel: () => ipcRenderer.invoke('youtube-oauth-cancel'),
