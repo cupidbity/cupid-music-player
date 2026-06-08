@@ -222,6 +222,25 @@ export default function App() {
   const volumeBarRef = useRef(null);
   const [showDebug] = useState(false);
   const [localTracks, setLocalTracks] = useState([]);
+  const [alwaysOnTop, setAlwaysOnTop] = useState(() => {
+    try {
+      return localStorage.getItem('cupid-player-always-on-top') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    const request = window.cupid?.setAlwaysOnTop?.(alwaysOnTop);
+    request?.catch((err) => {
+      console.error('Failed to update always-on-top mode:', err);
+    });
+    try {
+      localStorage.setItem('cupid-player-always-on-top', String(alwaysOnTop));
+    } catch {
+      // ignore
+    }
+  }, [alwaysOnTop]);
 
   const loadLocalPlaylist = useCallback(async () => {
     if (!window.cupid?.getLocalPlaylist) return;
@@ -741,6 +760,14 @@ export default function App() {
                 blue
               </button>
             </div>
+            <div className="settings-label">window</div>
+            <button
+              className={`settings-theme-btn ${alwaysOnTop ? 'active' : ''}`}
+              onClick={() => setAlwaysOnTop((enabled) => !enabled)}
+              aria-pressed={alwaysOnTop}
+            >
+              {alwaysOnTop ? 'pinned on top' : 'pin on top'}
+            </button>
             <div className="settings-label">music</div>
             <SettingsDropdown
               value={musicService}

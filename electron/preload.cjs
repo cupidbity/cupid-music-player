@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('cupid', {
   maximize: () => ipcRenderer.send('window-maximize'),
   close: () => ipcRenderer.send('window-close'),
   resize: (data) => ipcRenderer.send('window-resize', data),
+  setAlwaysOnTop: (enabled) => ipcRenderer.invoke('window-set-always-on-top', enabled),
   openExternal: (url) => ipcRenderer.send('open-external', url),
   setTheme: (theme) => ipcRenderer.send('set-theme', theme),
   getStreamUrl: (title, artist) => ipcRenderer.invoke('get-stream-url', title, artist),

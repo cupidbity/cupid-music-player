@@ -575,6 +575,15 @@ function createWindow() {
 }
 
 // ── Global IPC handlers (persist across window reloads) ──
+ipcMain.handle('window-set-always-on-top', (event, enabled) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return false;
+
+  const next = Boolean(enabled);
+  win.setAlwaysOnTop(next);
+  return win.isAlwaysOnTop();
+});
+
 ipcMain.handle('get-apple-music-token', () => {
   return generateAppleMusicToken();
 });
