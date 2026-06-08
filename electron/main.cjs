@@ -575,6 +575,15 @@ function createWindow() {
 }
 
 // ── Global IPC handlers (persist across window reloads) ──
+ipcMain.handle('window-set-always-on-top', (event, enabled) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return false;
+
+  const next = Boolean(enabled);
+  win.setAlwaysOnTop(next);
+  return win.isAlwaysOnTop();
+});
+
 ipcMain.handle('get-apple-music-token', () => {
   return generateAppleMusicToken();
 });
@@ -626,6 +635,60 @@ ipcMain.handle('youtube-fetch-playlist', async (_e, url) => {
   } catch (err) {
     throw new Error(`yt-dlp playlist fetch failed: ${err.message}`);
   }
+});
+
+ipcMain.handle('deezer-fetch-playlist', async (_e, playlistReference) => {
+  let playlistId = String(playlistReference);
+
+  if (!/^\d+$/.test(playlistId)) {
+    let sharedUrl;
+    try {
+      sharedUrl = new URL(playlistId);
+    } catch {
+      throw new Error('Invalid Deezer playlist URL');
+    }
+    if (sharedUrl.protocol !== 'https:' || sharedUrl.hostname !== 'link.deezer.com' || !sharedUrl.pathname.startsWith('/s/')) {
+      throw new Error('Invalid Deezer playlist URL');
+    }
+
+    const response = await fetch(sharedUrl, { redirect: 'follow' });
+    if (!response.ok) throw new Error(`Deezer share link ${response.status}`);
+    const resolved = new URL(response.url);
+    const match = resolved.pathname.match(/\/playlist\/(\d+)/);
+    if (resolved.hostname.replace(/^www\./, '') !== 'deezer.com' || !match) {
+      throw new Error('The Deezer share link does not point to a playlist');
+    }
+    playlistId = match[1];
+  }
+
+  const tracks = [];
+  let nextUrl = `https://api.deezer.com/playlist/${playlistId}`;
+  let firstPage = true;
+  let pageCount = 0;
+
+  while (nextUrl) {
+    if (++pageCount > 100) throw new Error('Deezer playlist pagination limit exceeded');
+    const url = new URL(nextUrl);
+    if (url.protocol !== 'https:' || url.hostname !== 'api.deezer.com') {
+      throw new Error('Deezer returned an invalid pagination URL');
+    }
+
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Deezer API ${response.status}`);
+    const data = await response.json();
+    if (data.error) throw new Error(data.error.message || 'Deezer API error');
+
+    const page = firstPage ? data.tracks : data;
+    if (!Array.isArray(page?.data)) {
+      throw new Error('Deezer returned an unexpected playlist response');
+    }
+
+    tracks.push(...page.data);
+    nextUrl = page.next || null;
+    firstPage = false;
+  }
+
+  return tracks;
 });
 
 // ── Google OAuth loopback ─────────────────────────────────

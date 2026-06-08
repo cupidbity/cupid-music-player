@@ -12,6 +12,7 @@ A pixel-art desktop music player built with Electron, Vite, and React.
 - Spotify integration — browse your playlists and play tracks via yt-dlp
 - Apple Music integration — browse your library playlists via MusicKit JS
 - YouTube playlists — paste any public playlist URL (no sign-in) or sign in with Google to browse your own
+- Deezer playlists — paste any public playlist URL with no sign-in or API key
 - Local MP3 playback
 - Custom frameless window with drag and resize
 - Dynamic dock/taskbar icon that matches the active theme
@@ -144,6 +145,12 @@ Two flows — pick whichever you want by configuring (or not) your `.env`. **No 
 The sign-in option only appears when `VITE_YOUTUBE_CLIENT_ID` is set; otherwise the URL-paste box shows instead.
 
 See [YOUTUBE_SETUP.md](YOUTUBE_SETUP.md) for detailed instructions and troubleshooting.
+
+## Deezer Setup
+
+Select **deezer** in the player settings and paste a public Deezer playlist URL.
+No login or developer key is required. See [DEEZER_SETUP.md](DEEZER_SETUP.md)
+for details and current limitations.
 
 ## Build
 
